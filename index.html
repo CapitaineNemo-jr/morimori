@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅プラ - グループ旅行計画</title>
+    <!-- グラフライブラリ (Chart.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* --- CSS（デザイン）をここに合体 --- */
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 30px; }
+        header h1 { color: #2c3e50; }
+        .card { background: #fff; border-radius: 12px; padding: 25px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .card h2 { margin-top: 0; color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        .btn { background-color: #3498db; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-size: 16px; width: 100%; }
+        .btn:hover { background-color: #2980b9; }
+        .btn-outline { background-color: transparent; border: 2px solid #3498db; color: #3498db; }
+        .btn-outline:hover { background-color: #3498db; color: white; }
+        .charts-container, .plans-container, .vote-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 600px) { .charts-container, .plans-container, .vote-buttons { grid-template-columns: 1fr; } }
+        .chart-box { background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+        .plan-card { background: #fdfefe; border-left: 5px solid #2ecc71; padding: 15px; border-radius: 4px; }
+        .info-text { color: #7f8c8d; font-style: italic; font-size: 14px; }
+        .vote-chart { margin-top: 20px; max-width: 400px; margin-left: auto; margin-right: auto; }
+        .bg-highlight { background-color: #eef7fc; border: 1px solid #d4ebf7; }
+        .badge { background-color: #e74c3c; color: white; padding: 3px 8px; border-radius: 4px; font-size: 14px; }
+        .invite-box { display: flex; gap: 10px; margin-bottom: 15px; }
+        .invite-box input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; }
+        .btn-sm { width: auto; padding: 8px 15px; font-size: 14px; }
+        .member-list-box ul { list-style-type: none; padding-left: 0; display: flex; gap: 10px; flex-wrap: wrap; }
+        .member-list-box li { background: #fff; padding: 5px 12px; border-radius: 20px; border: 1px solid #ddd; font-size: 14px; }
+        .demo-switch { margin-top: 20px; background: #fff; padding: 10px; border-radius: 6px; border: 1px dashed #3498db; }
+        .demo-switch select { padding: 5px; margin-left: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>👥 大人数旅行計画サポーター「旅プラ」</h1>
+        </header>
+
+        <!-- STEP 0: ログイン画面 -->
+        <section class="card" id="loginSection">
+            <h2>🏠 グループ作成 / 参加</h2>
+            <div class="form-group">
+                <label for="groupNameInput">グループ名</label>
+                <input type="text" id="groupNameInput" placeholder="例: 卒業旅行2026">
+            </div>
+            <div class="form-group">
+                <label for="userIdInput">あなたの個人ID（半角英数字）</label>
+                <input type="text" id="userIdInput" placeholder="例: taro123">
+            </div>
+            <button class="btn" onclick="login()">グループに入る</button>
+        </section>
+
+        <!-- メインコンテンツ（初期状態は非表示） -->
+        <div id="mainContent" style="display: none;">
+            
+            <!-- グループ情報 & メンバー招待 -->
+            <section class="card bg-highlight">
+                <div class="group-header">
+                    <h2>🏞️ グループ: <span id="displayGroupName"></span></h2>
+                    <p>現在のログインID: <strong id="displayUserId" class="badge"></strong></p>
+                </div>
+                <hr>
+                <h3>📩 メンバー招待・参加依頼</h3>
+                <div class="invite-box">
+                    <input type="text" id="inviteIdInput" placeholder="例: hanako456">
+                    <button class="btn btn-sm" onclick="inviteMember()">招待を送る</button>
+                </div>
+                <div class="member-list-box">
+                    <h4>参加中のメンバー一覧：</h4>
+                    <ul id="memberList"></ul>
+                </div>
+                <div class="demo-switch">
+                    <label for="userSwitch">👤 発表用（操作ユーザーを切り替える）:</label>
+                    <select id="userSwitch" onchange="switchUser(this.value)"></select>
+                </div>
+            </section>
+
+            <!-- STEP 1: 希望入力 -->
+            <section class="card">
+                <h2>1. あなたの希望を入力</h2>
+                <form id="surveyForm">
+                    <div class="form-group">
+                        <label for="userBudget">予算の上限 (円)</label>
+                        <input type="number" id="userBudget" value="30000" min="5000" step="5000">
+                    </div>
+                    <div class="form-group">
+                        <label for="userActivity">一番やりたいこと</label>
+                        <select id="userActivity">
+                            <option value="観光名所巡り">観光名所巡り</option>
+                            <option value="温泉・リラックス">温泉・リラックス</option>
+                            <option value="アクティビティ・体験">アクティビティ・体験</option>
+                            <option value="ショッピング">ショッピング</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn">回答を送信</button>
+                </form>
+            </section>
+
+            <!-- STEP 2: 集計結果 -->
+            <section class="card">
+                <h2>2. みんなの希望の集計結果</h2>
+                <div class="charts-container">
+                    <div class="chart-box">
+                        <h3>💰 予算の分布</h3>
+                        <canvas id="budgetChart"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>🎯 やりたいことの傾向</h3>
+                        <canvas id="activityChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STEP 3: プラン提案 -->
+            <section class="card">
+                <h2>3. 集計結果に基づく提案プラン</h2>
+                <div class="plans-container">
+                    <div class="plan-card">
+                        <h3>🏆 プランA: 王道満喫コース</h3>
+                        <p id="planADesc">データを入力すると提案が生成されます。</p>
+                    </div>
+                    <div class="plan-card">
+                        <h3>☕ プランB: のんびり癒やしコース</h3>
+                        <p id="planBDesc">データを入力すると提案が生成されます。</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STEP 4: 多数決システム -->
+            <section class="card">
+                <h2>4. どちらのプランが良いですか？（多数決）</h2>
+                <p class="info-text">※1つのIDにつき1回しか投票できません。</p>
+                <div class="vote-buttons">
+                    <button class="btn btn-outline" onclick="castVote('A')">👍 プランAに投票</button>
+                    <button class="btn btn-outline" onclick="castVote('B')">👍 プランBに投票</button>
+                </div>
+                <div class="chart-box vote-chart">
+                    <canvas id="voteChart"></canvas>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- --- JavaScript（ロジック）をここに合体 --- -->
+    <script>
+        let groupName = "";
+        let currentUserId = "";
+        let members = []; 
+        let surveyData = {}; 
+        let votes = { A: 0, B: 0 };
+        let votedUsers = []; 
+
+        let budgetChartIdx = null;
+        let activityChartIdx = null;
+        let voteChartIdx = null;
+
+        function login() {
+            groupName = document.getElementById('groupNameInput').value.trim();
+            currentUserId = document.getElementById('userIdInput').value.trim();
+
+            if (!groupName || !currentUserId) {
+                alert("グループ名とユーザーIDを入力してください。");
+                return;
+            }
+
+            if (!members.includes(currentUserId)) {
+                members.push(currentUserId);
+            }
+
+            document.getElementById('loginSection').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+
+            document.getElementById('displayGroupName').innerText = groupName;
+            updateUserDisplay();
+            updateMemberList();
+        }
+
+        function inviteMember() {
+            const inviteId = document.getElementById('inviteIdInput').value.trim();
+            if (!inviteId) return;
+
+            if (members.includes(inviteId)) {
+                alert("そのIDはすでに参加しています。");
+                return;
+            }
+
+            members.push(inviteId);
+            document.getElementById('inviteIdInput').value = '';
+            updateMemberList();
+            alert(`メンバー「${inviteId}」に参加依頼を送信し、グループに追加しました！`);
+        }
+
+        function updateMemberList() {
+            const listEl = document.getElementById('memberList');
+            const switchEl = document.getElementById('userSwitch');
+            
+            listEl.innerHTML = '';
+            switchEl.innerHTML = '';
+
+            members.forEach(m => {
+                const li = document.createElement('li');
+                const isAnswered = surveyData[m] ? " (回答済)" : " (未回答)";
+                li.innerText = `👤 ${m}${isAnswered}`;
+                listEl.appendChild(li);
+
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.innerText = m;
+                if (m === currentUserId) opt.selected = true;
+                switchEl.appendChild(opt);
+            });
+        }
+
+        function switchUser(userId) {
+            currentUserId = userId;
+            updateUserDisplay();
+            
+            if (surveyData[currentUserId]) {
+                document.getElementById('userBudget').value = surveyData[currentUserId].budget;
+                document.getElementById('userActivity').value = surveyData[currentUserId].activity;
+            } else {
+                document.getElementById('userBudget').value = 30000;
+                document.getElementById('userActivity').value = '観光名所巡り';
+            }
+        }
+
+        function updateUserDisplay() {
+            document.getElementById('displayUserId').innerText = currentUserId;
+        }
+
+        document.getElementById('surveyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const budget = parseInt(document.getElementById('userBudget').value);
+            const activity = document.getElementById('userActivity').value;
+
+            surveyData[currentUserId] = { budget, activity };
+
+            updateCharts();
+            updateProposals();
+            updateMemberList();
+            alert(`ID: ${currentUserId} の希望を登録しました！`);
+        });
+
+        function updateCharts() {
+            const dataArray = Object.values(surveyData);
+            const idArray = Object.keys(surveyData);
+            if (dataArray.length === 0) return;
+
+            const budgets = dataArray.map(d => d.budget);
+            if (budgetChartIdx) budgetChartIdx.destroy();
+            const ctxB = document.getElementById('budgetChart').getContext('2d');
+            budgetChartIdx = new Chart(ctxB, {
+                type: 'bar',
+                data: {
+                    labels: idArray,
+                    datasets: [{ label: '予算 (円)', data: budgets, backgroundColor: '#3498db' }]
+                },
+                options: { responsive: true }
+            });
+
+            const activityCounts = {};
+            dataArray.forEach(d => {
+                activityCounts[d.activity] = (activityCounts[d.activity] || 0) + 1;
+            });
+
+            if (activityChartIdx) activityChartIdx.destroy();
+            const ctxA = document.getElementById('activityChart').getContext('2d');
+            activityChartIdx = new Chart(ctxA, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(activityCounts),
+                    datasets: [{ data: Object.values(activityCounts), backgroundColor: ['#e74c3c', '#2ecc71', '#f1c40f', '#9b59b6'] }]
+                },
+                options: { responsive: true }
+            });
+        }
+
+        function updateProposals() {
+            const dataArray = Object.values(surveyData);
+            if (dataArray.length === 0) return;
+
+            const avgBudget = dataArray.reduce((sum, d) => sum + d.budget, 0) / dataArray.length;
+
+            if (avgBudget < 20000) {
+                document.getElementById('planADesc').innerText = `予算重視！近場で楽しむローカル日帰り観光ツアー（想定費用: 約${Math.round(avgBudget)}円）`;
+                document.getElementById('planBDesc').innerText = `お家やレンタルスペースを借り切ってまったりパーティー（想定費用: 約${Math.round(avgBudget * 0.8)}円）`;
+            } else {
+                document.getElementById('planADesc').innerText = `ちょっと贅沢！話題のスポットを巡る1泊2日の温泉旅行（想定費用: 約${Math.round(avgBudget)}円）`;
+                document.getElementById('planBDesc').innerText = `グランピング施設で大自然とリッチなBBQを堪能するプラン（想定費用: 約${Math.round(avgBudget * 0.9)}円）`;
+            }
+        }
+
+        function castVote(plan) {
+            if (!surveyData[currentUserId]) {
+                alert("投票する前に、まずは「1. あなたの希望を入力」から条件を送信してください！");
+                return;
+            }
+
+            if (votedUsers.includes(currentUserId)) {
+                alert(`❌ エラー: ID「${currentUserId}」はすでに投票済みです。1人1票までしか投票できません！`);
+                return;
+            }
+
+            votes[plan]++;
+            votedUsers.push(currentUserId); 
+            
+            updateVoteChart();
+            alert(`ID「${currentUserId}」の投票を受け付けました！`);
+        }
+
+        function updateVoteChart() {
+            if (voteChartIdx) voteChartIdx.destroy();
+            const ctxV = document.getElementById('voteChart').getContext('2d');
+            voteChartIdx = new Chart(ctxV, {
+                type: 'pie',
+                data: {
+                    labels: ['プランA', 'プランB'],
+                    datasets: [{ data: [votes.A, votes.B], backgroundColor: ['#2ecc71', '#3498db'] }]
+                },
+                options: { responsive: true }
+            });
+        }
+    </script>
+</body>
+</html>
